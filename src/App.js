@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -867,6 +867,195 @@ function LandingPage({ onEnter }) {
   );
 }
 
+// ─── CHART COMPONENTS ────────────────────────────────────────────────────────
+
+function DonutChart({ data, size = 160, strokeWidth = 22 }) {
+  const r = (size - strokeWidth) / 2;
+  const cx = size / 2, cy = size / 2;
+  const circ = 2 * Math.PI * r;
+  let offset = 0;
+  const total = data.reduce((a, d) => a + d.value, 0);
+  return (
+    <svg width={size} height={size} style={{ transform:"rotate(-90deg)" }}>
+      {data.map((d, i) => {
+        const pct = d.value / total;
+        const dash = pct * circ;
+        const gap = circ - dash;
+        const el = (
+          <circle key={i} cx={cx} cy={cy} r={r}
+            fill="none" stroke={d.color} strokeWidth={strokeWidth}
+            strokeDasharray={`${dash} ${gap}`}
+            strokeDashoffset={-offset}
+            style={{ transition:"stroke-dasharray 0.8s ease" }}
+          />
+        );
+        offset += dash;
+        return el;
+      })}
+    </svg>
+  );
+}
+
+function HBarChart({ data, height = 220 }) {
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:8, height }}>
+      {data.map((d, i) => (
+        <div key={i} style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:90, fontSize:11, fontFamily:"var(--mono)", color:"var(--muted)",
+                        textAlign:"right", flexShrink:0 }}>{d.label}</div>
+          <div style={{ flex:1, height:14, background:"rgba(255,255,255,0.04)",
+                        borderRadius:3, overflow:"hidden" }}>
+            <div style={{
+              height:"100%", borderRadius:3,
+              width:`${(d.value / max) * 100}%`,
+              background:d.color,
+              transition:"width 1s cubic-bezier(.22,.68,0,1.2)",
+              boxShadow:`0 0 8px ${d.color}60`
+            }}/>
+          </div>
+          <div style={{ width:50, fontSize:11, fontFamily:"var(--mono)", color:d.color, flexShrink:0 }}>
+            {d.value.toLocaleString()}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SparkLine({ values, color = "#00e5ff", height = 60 }) {
+  if (!values || values.length < 2) return null;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+  const w = 300, h = height;
+  const pts = values.map((v, i) => ({
+    x: (i / (values.length - 1)) * w,
+    y: h - ((v - min) / range) * (h - 6) - 3
+  }));
+  const linePath = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  const areaPath = `${linePath} L ${pts[pts.length-1].x} ${h} L 0 ${h} Z`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none"
+         style={{ width:"100%", height, display:"block" }}>
+      <defs>
+        <linearGradient id={`sg${color.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3"/>
+          <stop offset="100%" stopColor={color} stopOpacity="0.02"/>
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill={`url(#sg${color.replace("#","")})`}/>
+      <path d={linePath} fill="none" stroke={color} strokeWidth="2"
+            style={{ filter:`drop-shadow(0 0 4px ${color})` }}/>
+      {pts.map((p, i) => i === pts.length - 1 && (
+        <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={color}
+                style={{ filter:`drop-shadow(0 0 4px ${color})` }}/>
+      ))}
+    </svg>
+  );
+}
+
+function GaugeMeter({ value, max = 100, color = "#00e5ff", size = 120, label }) {
+  const pct = Math.min(value / max, 1);
+  const r = 44;
+  const circ = Math.PI * r;
+  const dash = pct * circ;
+  return (
+    <div style={{ textAlign:"center" }}>
+      <svg width={size} height={size * 0.6} viewBox="0 0 100 54">
+        <path d="M 8 50 A 44 44 0 0 1 92 50" fill="none"
+              stroke="rgba(255,255,255,0.06)" strokeWidth="10" strokeLinecap="round"/>
+        <path d="M 8 50 A 44 44 0 0 1 92 50" fill="none"
+              stroke={color} strokeWidth="10" strokeLinecap="round"
+              strokeDasharray={`${dash} ${circ}`}
+              style={{ filter:`drop-shadow(0 0 6px ${color})`, transition:"stroke-dasharray 1s ease" }}/>
+        <text x="50" y="48" textAnchor="middle" fontSize="14" fontWeight="700"
+              fill="#f0f4ff" fontFamily="Syne, sans-serif">
+          {Math.round(value * 10) / 10}{max === 100 ? "%" : ""}
+        </text>
+      </svg>
+      {label && <div style={{ fontSize:10, color:"var(--muted)", fontFamily:"var(--mono)",
+                               letterSpacing:"1px", marginTop:2 }}>{label}</div>}
+    </div>
+  );
+}
+
+function VBarChart({ data, height = 160 }) {
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div style={{ display:"flex", alignItems:"flex-end", gap:6, height, paddingBottom:24,
+                  position:"relative" }}>
+      <div style={{ position:"absolute", bottom:24, left:0, right:0,
+                    borderBottom:"1px solid rgba(255,255,255,0.06)" }}/>
+      {data.map((d, i) => (
+        <div key={i} style={{ flex:1, display:"flex", flexDirection:"column",
+                              alignItems:"center", gap:4 }}>
+          <div style={{ fontSize:10, fontFamily:"var(--mono)", color:d.color }}>
+            {d.value.toLocaleString()}
+          </div>
+          <div style={{
+            width:"100%", borderRadius:"4px 4px 0 0",
+            height:`${Math.max((d.value / max) * (height - 40), 4)}px`,
+            background:`linear-gradient(180deg, ${d.color}, ${d.color}80)`,
+            boxShadow:`0 0 12px ${d.color}40`,
+            transition:"height 1s cubic-bezier(.22,.68,0,1.2)"
+          }}/>
+          <div style={{ fontSize:9, fontFamily:"var(--mono)", color:"var(--muted)",
+                        textAlign:"center", lineHeight:1.2 }}>{d.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ThreatHeatmap({ data }) {
+  const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  const hours = Array.from({length:24}, (_, i) => i);
+  const max = Math.max(...data.map(d => d.count), 1);
+  const get = (h, d) => (data.find(x => x.hour === h && x.day === d) || {}).count || 0;
+  return (
+    <div style={{ overflowX:"auto" }}>
+      <div style={{ display:"grid", gridTemplateColumns:`28px repeat(24, 1fr)`,
+                    gap:2, minWidth:600 }}>
+        <div/>
+        {hours.map(h => (
+          <div key={h} style={{ fontSize:9, fontFamily:"var(--mono)", color:"var(--subtle)",
+                                textAlign:"center" }}>{h}</div>
+        ))}
+        {days.map((day, di) => (
+          <React.Fragment key={di}>
+            <div style={{ fontSize:9, fontFamily:"var(--mono)", color:"var(--muted)",
+                          display:"flex", alignItems:"center" }}>{day}</div>
+            {hours.map(h => {
+              const val = get(h, di);
+              const pct = val / max;
+              const bg = pct > 0.7 ? "var(--rose)" : pct > 0.4 ? "var(--amber)" :
+                         pct > 0.1 ? "var(--cyan)" : "rgba(255,255,255,0.04)";
+              return (
+                <div key={`${di}-${h}`} style={{
+                  height:14, borderRadius:2, background:bg,
+                  opacity: pct > 0 ? 0.3 + pct * 0.7 : 1
+                }}/>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </div>
+      <div style={{ display:"flex", gap:16, marginTop:10, justifyContent:"center",
+                    fontSize:10, fontFamily:"var(--mono)", color:"var(--muted)" }}>
+        {[["rgba(255,255,255,0.04)","Low"],["var(--cyan)","Medium"],
+          ["var(--amber)","High"],["var(--rose)","Critical"]].map(([c,l]) => (
+          <span key={l} style={{ display:"flex", alignItems:"center", gap:5 }}>
+            <span style={{ width:10, height:10, background:c, opacity:.7,
+                           borderRadius:2, display:"inline-block" }}/>
+            {l}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function LoginPage({ onLogin }) {
   const [tab,       setTab]      = useState("login");
@@ -1076,57 +1265,216 @@ function Dashboard({ setPage }) {
   const [load, setLoad] = useState(true);
   const [err,  setErr]  = useState("");
 
-  useEffect(()=>{
-    API.get("/dashboard/").then(r=>setData(r.data)).catch(()=>setErr("Failed to load")).finally(()=>setLoad(false));
-  },[]);
+  useEffect(() => {
+    API.get("/dashboard/")
+      .then(r => setData(r.data))
+      .catch(() => setErr("Failed to load"))
+      .finally(() => setLoad(false));
+  }, []);
 
   if (load) return <Center><Spinner size={32}/></Center>;
   if (err)  return <Center><span style={{ color:"var(--rose)" }}>{err}</span></Center>;
+
   const run = data?.latest_run;
+
+  const severityData = [
+    { label:"HIGH",   value:run?.high_count   || 0, color:"var(--rose)"    },
+    { label:"MEDIUM", value:run?.medium_count || 0, color:"var(--amber)"   },
+    { label:"LOW",    value:(run?.total_records||0)-(run?.high_count||0)-(run?.medium_count||0), color:"var(--emerald)" },
+  ];
+  const totalAlerts = severityData.reduce((a,d) => a + d.value, 0);
+
+  const attackData = [
+    { label:"Brute Force", value:run?.brute_force_count||0, color:"var(--rose)"   },
+    { label:"Port Scan",   value:run?.port_scan_count  ||0, color:"var(--amber)"  },
+    { label:"Geo Anomaly", value:run?.geo_anomaly_count||0, color:"var(--cyan)"   },
+    { label:"Priv Esc",    value:run?.priv_esc_count   ||0, color:"var(--violet)" },
+  ];
+
+  const detRate = run?.total_records
+    ? ((run.high_count + run.medium_count) / run.total_records * 100) : 0;
+
+  const trendVals = data?.recent_alerts?.length > 0
+    ? data.recent_alerts.slice().reverse().map(a => a.risk_score || 0) : [0];
+
+  const heatmapData = [];
+  if (data?.recent_alerts) {
+    data.recent_alerts.forEach(a => {
+      if (a.created_at) {
+        const dt = new Date(a.created_at);
+        const h = dt.getHours();
+        const d = (dt.getDay() + 6) % 7;
+        const ex = heatmapData.find(x => x.hour === h && x.day === d);
+        if (ex) ex.count++; else heatmapData.push({ hour:h, day:d, count:1 });
+      }
+    });
+  }
 
   return (
     <div className="scroll" style={{ padding:"28px 32px" }}>
-      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:32 }}>
+
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:32 }}>
         <div>
           <div className="label fade-up" style={{ marginBottom:6 }}>Overview</div>
           <h1 className="page-title fade-up s1">Security Dashboard</h1>
-          <div style={{ fontSize:13,color:"var(--muted)",marginTop:6,fontFamily:"var(--mono)" }}>
-            {run ? `Last run ${new Date(run.completed_at).toLocaleString()} · ${run.total_records?.toLocaleString()} records` : "No pipeline runs yet"}
+          <div style={{ fontSize:13, color:"var(--muted)", marginTop:6, fontFamily:"var(--mono)" }}>
+            {run
+              ? `Last run ${new Date(run.completed_at).toLocaleString()} · ${run.total_records?.toLocaleString()} records`
+              : "No pipeline runs yet"}
           </div>
         </div>
-        <div style={{ display:"flex",gap:10 }}>
-          <button className="btn-ghost fade-up s2" onClick={()=>window.location.reload()} style={{ display:"flex",alignItems:"center",gap:8 }}>Refresh</button>
-          <button className="btn-primary fade-up s3" onClick={()=>setPage("collection")} style={{ display:"flex",alignItems:"center",gap:8 }}>
+        <div style={{ display:"flex", gap:10 }}>
+          <button className="btn-ghost fade-up s2" onClick={() => window.location.reload()}
+                  style={{ display:"flex", alignItems:"center", gap:8 }}>Refresh</button>
+          <button className="btn-primary fade-up s3" onClick={() => setPage("collection")}
+                  style={{ display:"flex", alignItems:"center", gap:8 }}>
             <Ic n="zap" s={14} c="#03060f"/> Run Pipeline
           </button>
         </div>
       </div>
-      <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:28 }}>
-        <MetricCard label="Total Records" value={run?.total_records?.toLocaleString()||"—"} sub="Latest run"      color="var(--cyan)"    icon="logs"   delay={0}/>
-        <MetricCard label="HIGH Alerts"   value={run?.high_count?.toLocaleString()||"—"}    sub="Confirmed"       color="var(--rose)"    icon="alerts" delay={.05}/>
+
+      {/* Metric cards */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:24 }}>
+        <MetricCard label="Total Records" value={run?.total_records?.toLocaleString()||"—"} sub="Latest run"      color="var(--cyan)"    icon="logs"    delay={0}/>
+        <MetricCard label="HIGH Alerts"   value={run?.high_count?.toLocaleString()||"—"}    sub="Confirmed"       color="var(--rose)"    icon="alerts"  delay={.05}/>
         <MetricCard label="MEDIUM Alerts" value={run?.medium_count?.toLocaleString()||"—"}  sub="Suspicious"      color="var(--amber)"   icon="anomaly" delay={.1}/>
-        <MetricCard label="Open Alerts"   value={data?.open_alerts?.toString()||"0"}        sub="Awaiting review" color="var(--emerald)" icon="shield" delay={.15}/>
+        <MetricCard label="Open Alerts"   value={data?.open_alerts?.toString()||"0"}        sub="Awaiting review" color="var(--emerald)" icon="shield"  delay={.15}/>
       </div>
+
+      {/* Charts row 1 */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16, marginBottom:16 }}>
+
+        {/* Severity Donut */}
+        <div className="card fade-up s2">
+          <div className="label" style={{ marginBottom:16 }}>Severity Breakdown</div>
+          <div style={{ display:"flex", alignItems:"center", gap:24 }}>
+            <div style={{ position:"relative", flexShrink:0 }}>
+              <DonutChart data={severityData.filter(d => d.value > 0)} size={140} strokeWidth={20}/>
+              <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column",
+                            alignItems:"center", justifyContent:"center" }}>
+                <div style={{ fontFamily:"var(--display)", fontSize:22, fontWeight:700 }}>
+                  {totalAlerts.toLocaleString()}
+                </div>
+                <div style={{ fontSize:10, color:"var(--muted)", fontFamily:"var(--mono)" }}>TOTAL</div>
+              </div>
+            </div>
+            <div style={{ flex:1, display:"flex", flexDirection:"column", gap:10 }}>
+              {severityData.map((d, i) => (
+                <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:8, height:8, borderRadius:"50%", background:d.color }}/>
+                    <span style={{ fontSize:12, color:"var(--muted)", fontFamily:"var(--mono)" }}>{d.label}</span>
+                  </div>
+                  <span style={{ fontSize:12, color:d.color, fontFamily:"var(--mono)", fontWeight:600 }}>
+                    {d.value.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Attack Type Bars */}
+        <div className="card fade-up s3">
+          <div className="label" style={{ marginBottom:16 }}>Attack Type Distribution</div>
+          <HBarChart data={attackData} height={130}/>
+        </div>
+
+        {/* Detection Gauges */}
+        <div className="card fade-up s4">
+          <div className="label" style={{ marginBottom:16 }}>Detection Metrics</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            <GaugeMeter value={detRate} max={100} color="var(--cyan)" size={110} label="DETECTION RATE"/>
+            <GaugeMeter value={run?.rule_match_count||0} max={Math.max(run?.total_records||1,1)}
+                        color="var(--violet)" size={110} label="RULE MATCHES"/>
+            <GaugeMeter value={run?.if_anomaly_count||0} max={Math.max(run?.total_records||1,1)}
+                        color="var(--rose)" size={110} label="IF ANOMALIES"/>
+            <GaugeMeter value={run?.low_count||0} max={Math.max(run?.total_records||1,1)}
+                        color="var(--emerald)" size={110} label="NORMAL TRAFFIC"/>
+          </div>
+        </div>
+      </div>
+
+      {/* Charts row 2 */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+
+        {/* Risk Score Sparkline */}
+        <div className="card fade-up s2">
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+            <div>
+              <div className="label" style={{ marginBottom:4 }}>Risk Score Trend</div>
+              <div style={{ fontSize:13, color:"var(--muted)" }}>Latest alert risk scores</div>
+            </div>
+            <div style={{ fontFamily:"var(--display)", fontSize:28, fontWeight:700, color:"var(--rose)" }}>
+              {trendVals.length > 0 ? Math.max(...trendVals) : "—"}
+            </div>
+          </div>
+          <SparkLine values={trendVals} color="var(--rose)" height={80}/>
+          <div style={{ display:"flex", justifyContent:"space-between", marginTop:8,
+                        fontSize:10, fontFamily:"var(--mono)", color:"var(--subtle)" }}>
+            <span>EARLIEST</span><span>LATEST</span>
+          </div>
+        </div>
+
+        {/* Attack Vertical Bars */}
+        <div className="card fade-up s3">
+          <div className="label" style={{ marginBottom:4 }}>Attack Volume by Type</div>
+          <div style={{ fontSize:13, color:"var(--muted)", marginBottom:16 }}>Current pipeline run</div>
+          <VBarChart data={attackData} height={160}/>
+        </div>
+      </div>
+
+      {/* Threat Heatmap */}
+      <div className="card fade-up s3" style={{ marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <div>
+            <div className="label" style={{ marginBottom:4 }}>Threat Activity Heatmap</div>
+            <div style={{ fontSize:13, color:"var(--muted)" }}>Alert frequency by hour and day of week</div>
+          </div>
+          <span className="stat-pill pill-info" style={{ fontFamily:"var(--mono)", fontSize:10 }}>LIVE DATA</span>
+        </div>
+        {heatmapData.length > 0
+          ? <ThreatHeatmap data={heatmapData}/>
+          : <Empty msg="Run the pipeline to generate heatmap data."/>}
+      </div>
+
+      {/* Recent Alerts */}
       <div className="card fade-up s4">
-        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
           <div>
             <div className="label" style={{ marginBottom:4 }}>Recent activity</div>
-            <div style={{ fontSize:17,fontWeight:600,color:"var(--text)" }}>Latest Alerts</div>
+            <div style={{ fontSize:17, fontWeight:600, color:"var(--text)" }}>Latest Alerts</div>
           </div>
-          <button className="btn-ghost" style={{ fontSize:12 }} onClick={()=>setPage("alerts")}>View all</button>
+          <button className="btn-ghost" style={{ fontSize:12 }} onClick={() => setPage("alerts")}>View all</button>
         </div>
         {data?.recent_alerts?.length > 0 ? (
           <table>
-            <thead><tr><th>Severity</th><th>Source IP</th><th>Username</th><th>Attack Type</th><th>Risk Score</th><th>Time</th></tr></thead>
+            <thead>
+              <tr><th>Severity</th><th>Source IP</th><th>Username</th><th>Attack Type</th><th>Risk Score</th><th>Time</th></tr>
+            </thead>
             <tbody>
-              {data.recent_alerts.map((a,i)=>(
+              {data.recent_alerts.map((a, i) => (
                 <tr key={i} className="slide-in" style={{ animationDelay:(i*.03)+"s" }}>
                   <td><span className={`stat-pill pill-${a.severity?.toLowerCase()}`}>{a.severity}</span></td>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:12 }}>{a.source_ip||"—"}</td>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:12,color:"var(--cyan)" }}>{a.username||"—"}</td>
-                  <td style={{ color:"var(--text)",fontSize:13 }}>{a.attack_type||"Unknown"}</td>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:12,color:"var(--violet)" }}>{a.risk_score}</td>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:11,color:"var(--muted)" }}>{new Date(a.created_at).toLocaleTimeString()}</td>
+                  <td style={{ fontFamily:"var(--mono)", fontSize:12 }}>{a.source_ip||"—"}</td>
+                  <td style={{ fontFamily:"var(--mono)", fontSize:12, color:"var(--cyan)" }}>{a.username||"—"}</td>
+                  <td style={{ color:"var(--text)", fontSize:13 }}>{a.attack_type||"Unknown"}</td>
+                  <td>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ width:48, height:4, background:"rgba(255,255,255,0.06)", borderRadius:2, overflow:"hidden" }}>
+                        <div style={{
+                          height:"100%", borderRadius:2,
+                          width:`${a.risk_score||0}%`,
+                          background:a.risk_score>=75?"var(--rose)":a.risk_score>=50?"var(--amber)":"var(--emerald)"
+                        }}/>
+                      </div>
+                      <span style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--violet)" }}>{a.risk_score}</span>
+                    </div>
+                  </td>
+                  <td style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--muted)" }}>
+                    {new Date(a.created_at).toLocaleTimeString()}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1603,8 +1951,7 @@ function ReportsPage() {
       .then(r => {
         const all = r.data;
         setReports(all);
-        if (runId === "all") { setSelected(null); }
-        else { setSelected(all.find(rep => String(rep.pipeline_run_id) === runId) || null); }
+        setSelected(runId === "all" ? null : all.find(rep => String(rep.pipeline_run_id) === runId) || null);
       })
       .catch(console.error)
       .finally(() => setLoad(false));
@@ -1612,16 +1959,86 @@ function ReportsPage() {
 
   const display = runId === "all" ? reports : (selected ? [selected] : []);
 
+  const exportCSV = () => {
+    if (!display.length) return;
+    const headers = ["Run","Total","HIGH","MEDIUM","LOW","Brute Force","Port Scan","Geo Anomaly","Priv Esc","Generated"];
+    const rows = display.map(r => [
+      `#${r.pipeline_run_id}`,r.total_records,r.high_count,r.medium_count,r.low_count,
+      r.brute_force_count,r.port_scan_count,r.geo_anomaly_count,r.priv_esc_count,
+      new Date(r.generated_at).toLocaleString()
+    ]);
+    const csv = [headers,...rows].map(r => r.join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+    a.download = `saad_report_${runId}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  };
+
+  const exportJSON = () => {
+    if (!display.length) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(display,null,2)],{type:"application/json"}));
+    a.download = `saad_report_${runId}_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+  };
+
+  const sel = selected;
+  const severityPie = sel ? [
+    { label:"HIGH",   value:sel.high_count,   color:"var(--rose)"    },
+    { label:"MEDIUM", value:sel.medium_count, color:"var(--amber)"   },
+    { label:"LOW",    value:sel.low_count,    color:"var(--emerald)" },
+  ] : [];
+
+  const attackBars = sel ? [
+    { label:"Brute\nForce", value:sel.brute_force_count, color:"var(--rose)"   },
+    { label:"Port\nScan",   value:sel.port_scan_count,   color:"var(--amber)"  },
+    { label:"Geo\nAnomaly", value:sel.geo_anomaly_count, color:"var(--cyan)"   },
+    { label:"Priv\nEsc",    value:sel.priv_esc_count,    color:"var(--violet)" },
+  ] : [];
+
+  const trendData = [...reports].reverse();
+
   return (
     <div className="scroll" style={{ padding:"28px 32px" }}>
-      <div style={{ marginBottom:28 }}>
-        <div className="label fade-up" style={{ marginBottom:6 }}>Analytics</div>
-        <h1 className="page-title fade-up s1">Reports</h1>
+
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:28 }}>
+        <div>
+          <div className="label fade-up" style={{ marginBottom:6 }}>Analytics</div>
+          <h1 className="page-title fade-up s1">Reports</h1>
+          <div style={{ fontSize:13, color:"var(--muted)", marginTop:6 }}>
+            {display.length} report{display.length!==1?"s":""} found
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:10 }}>
+          <button className="btn-ghost fade-up s1" onClick={exportCSV}
+                  style={{ display:"flex", alignItems:"center", gap:8, fontSize:12 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export CSV
+          </button>
+          <button className="btn-ghost fade-up s2" onClick={exportJSON}
+                  style={{ display:"flex", alignItems:"center", gap:8, fontSize:12 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export JSON
+          </button>
+        </div>
       </div>
+
+      {/* Run selector */}
       <div style={{ marginBottom:24 }}>
         <div className="label" style={{ marginBottom:8 }}>Pipeline Run</div>
         <select value={runId} onChange={e => setRunId(e.target.value)}
-                style={{ maxWidth:500,background:"#080e1c",color:"var(--cyan)",border:"1px solid rgba(0,229,255,0.3)",borderRadius:10,padding:"11px 16px",fontSize:13,fontFamily:"var(--mono)" }}>
+                style={{ maxWidth:500, background:"#080e1c", color:"var(--cyan)",
+                         border:"1px solid rgba(0,229,255,0.3)", borderRadius:10,
+                         padding:"11px 16px", fontSize:13, fontFamily:"var(--mono)" }}>
           <option value="all">All runs</option>
           {runs.map(r => (
             <option key={r.id} value={String(r.id)}>
@@ -1630,56 +2047,210 @@ function ReportsPage() {
           ))}
         </select>
       </div>
-      {selected && (
-        <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24 }}>
+
+      {/* Summary cards */}
+      {sel && (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:20 }}>
           {[
-            { label:"Total Records", value:selected.total_records?.toLocaleString(), color:"var(--cyan)"    },
-            { label:"HIGH Alerts",   value:selected.high_count,                      color:"var(--rose)"    },
-            { label:"MEDIUM Alerts", value:selected.medium_count,                    color:"var(--amber)"   },
-            { label:"LOW (Normal)",  value:selected.low_count?.toLocaleString(),     color:"var(--emerald)" },
-          ].map((s,i) => (
+            { label:"Total Records", value:sel.total_records?.toLocaleString(), color:"var(--cyan)"    },
+            { label:"HIGH Alerts",   value:sel.high_count,                      color:"var(--rose)"    },
+            { label:"MEDIUM Alerts", value:sel.medium_count,                    color:"var(--amber)"   },
+            { label:"LOW (Normal)",  value:sel.low_count?.toLocaleString(),      color:"var(--emerald)" },
+          ].map((s, i) => (
             <div key={i} className="card fade-up" style={{ animationDelay:(i*.05)+"s" }}>
-              <div style={{ fontSize:11,color:s.color,fontFamily:"var(--mono)",letterSpacing:1,textTransform:"uppercase",marginBottom:8 }}>{s.label}</div>
-              <div style={{ fontFamily:"var(--display)",fontSize:32,fontWeight:700,color:s.color }}>{s.value}</div>
+              <div style={{ fontSize:11, color:s.color, fontFamily:"var(--mono)",
+                            letterSpacing:1, textTransform:"uppercase", marginBottom:8 }}>{s.label}</div>
+              <div style={{ fontFamily:"var(--display)", fontSize:32, fontWeight:700, color:s.color }}>{s.value}</div>
             </div>
           ))}
         </div>
       )}
-      {selected && (
-        <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24 }}>
-          {[
-            { label:"Brute Force",          value:selected.brute_force_count, color:"var(--rose)"   },
-            { label:"Port Scan",            value:selected.port_scan_count,   color:"var(--amber)"  },
-            { label:"Geo Anomaly",          value:selected.geo_anomaly_count, color:"var(--cyan)"   },
-            { label:"Privilege Escalation", value:selected.priv_esc_count,    color:"var(--violet)" },
-          ].map((s,i) => (
-            <div key={i} className="card fade-up" style={{ animationDelay:(i*.05)+"s" }}>
-              <div style={{ fontSize:11,color:"var(--muted)",fontFamily:"var(--mono)",letterSpacing:1,textTransform:"uppercase",marginBottom:8 }}>{s.label}</div>
-              <div style={{ fontFamily:"var(--display)",fontSize:28,fontWeight:700,color:s.color }}>{s.value}</div>
+
+      {/* Charts for selected run */}
+      {sel && (
+        <>
+          {/* Row 1: Donut + VBars + Gauges */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16, marginBottom:16 }}>
+
+            <div className="card fade-up">
+              <div className="label" style={{ marginBottom:16 }}>Severity Distribution</div>
+              <div style={{ display:"flex", alignItems:"center", gap:20 }}>
+                <div style={{ position:"relative", flexShrink:0 }}>
+                  <DonutChart data={severityPie.filter(d=>d.value>0)} size={130} strokeWidth={18}/>
+                  <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column",
+                                alignItems:"center", justifyContent:"center" }}>
+                    <div style={{ fontFamily:"var(--display)", fontSize:18, fontWeight:700 }}>
+                      {(sel.high_count+sel.medium_count+sel.low_count).toLocaleString()}
+                    </div>
+                    <div style={{ fontSize:9, color:"var(--muted)", fontFamily:"var(--mono)" }}>TOTAL</div>
+                  </div>
+                </div>
+                <div style={{ flex:1, display:"flex", flexDirection:"column", gap:12 }}>
+                  {severityPie.map((d, i) => (
+                    <div key={i}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                        <span style={{ fontSize:11, fontFamily:"var(--mono)", color:"var(--muted)" }}>{d.label}</span>
+                        <span style={{ fontSize:11, fontFamily:"var(--mono)", color:d.color }}>{d.value.toLocaleString()}</span>
+                      </div>
+                      <div style={{ height:3, background:"rgba(255,255,255,0.05)", borderRadius:2 }}>
+                        <div style={{
+                          height:"100%", borderRadius:2,
+                          width:`${(d.value/(sel.total_records||1))*100}%`,
+                          background:d.color, opacity:.8
+                        }}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          ))}
+
+            <div className="card fade-up s1">
+              <div className="label" style={{ marginBottom:4 }}>Attack Type Breakdown</div>
+              <VBarChart data={attackBars} height={170}/>
+            </div>
+
+            <div className="card fade-up s2">
+              <div className="label" style={{ marginBottom:16 }}>Detection Efficiency</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4 }}>
+                <GaugeMeter value={sel.total_records?((sel.high_count+sel.medium_count)/sel.total_records*100):0}
+                            color="var(--cyan)" size={100} label="ALERT RATE %"/>
+                <GaugeMeter value={sel.total_records?(sel.rule_match_count/sel.total_records*100):0}
+                            color="var(--violet)" size={100} label="RULE MATCH %"/>
+                <GaugeMeter value={sel.total_records?(sel.if_anomaly_count/sel.total_records*100):0}
+                            color="var(--rose)" size={100} label="IF ANOMALY %"/>
+                <GaugeMeter value={sel.total_records?(sel.low_count/sel.total_records*100):0}
+                            color="var(--emerald)" size={100} label="NORMAL %"/>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: HBars + Proportional */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+
+            <div className="card fade-up">
+              <div className="label" style={{ marginBottom:16 }}>Attack Count Comparison</div>
+              <HBarChart data={attackBars} height={160}/>
+            </div>
+
+            <div className="card fade-up s1">
+              <div className="label" style={{ marginBottom:16 }}>Proportional Threat Composition</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                {[
+                  { label:"Rule-Based Detections", value:sel.rule_match_count,  color:"var(--violet)" },
+                  { label:"IF Anomaly Detections", value:sel.if_anomaly_count,  color:"var(--cyan)"   },
+                  { label:"HIGH Severity Events",  value:sel.high_count,        color:"var(--rose)"   },
+                  { label:"MEDIUM Severity Events",value:sel.medium_count,      color:"var(--amber)"  },
+                  { label:"Normal Traffic",         value:sel.low_count,        color:"var(--emerald)"},
+                ].map((item, i) => {
+                  const pct = sel.total_records ? (item.value/sel.total_records*100) : 0;
+                  return (
+                    <div key={i}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                        <span style={{ fontSize:11, fontFamily:"var(--mono)", color:"var(--muted)" }}>{item.label}</span>
+                        <span style={{ fontSize:11, fontFamily:"var(--mono)", color:item.color }}>{pct.toFixed(2)}%</span>
+                      </div>
+                      <div style={{ height:6, background:"rgba(255,255,255,0.05)", borderRadius:3 }}>
+                        <div style={{
+                          height:"100%", borderRadius:3,
+                          width:`${Math.min(pct,100)}%`,
+                          background:item.color,
+                          boxShadow:`0 0 6px ${item.color}60`,
+                          transition:"width 1s ease"
+                        }}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* All-runs trend sparklines */}
+      {runId === "all" && trendData.length > 1 && (
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+          <div className="card fade-up">
+            <div className="label" style={{ marginBottom:4 }}>HIGH Alert Trend — All Runs</div>
+            <div style={{ fontSize:13, color:"var(--muted)", marginBottom:12 }}>
+              Across {trendData.length} pipeline runs
+            </div>
+            <SparkLine values={trendData.map(r=>r.high_count||0)} color="var(--rose)" height={80}/>
+          </div>
+          <div className="card fade-up s1">
+            <div className="label" style={{ marginBottom:4 }}>Total Records Trend — All Runs</div>
+            <div style={{ fontSize:13, color:"var(--muted)", marginBottom:12 }}>Records processed per run</div>
+            <SparkLine values={trendData.map(r=>r.total_records||0)} color="var(--cyan)" height={80}/>
+          </div>
         </div>
       )}
-      <div className="card">
-        <div className="label" style={{ marginBottom:16 }}>{runId === "all" ? "All pipeline runs" : `Run #${runId} details`}</div>
-        {load ? <Center><Spinner/></Center> : display.length>0 ? (
+
+      {/* Full data table */}
+      <div className="card fade-up">
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <div className="label">{runId==="all"?"All pipeline runs":`Run #${runId} details`}</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={exportCSV} className="btn-ghost"
+                    style={{ fontSize:11, padding:"6px 14px", display:"flex", alignItems:"center", gap:6 }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>CSV
+            </button>
+            <button onClick={exportJSON} className="btn-ghost"
+                    style={{ fontSize:11, padding:"6px 14px", display:"flex", alignItems:"center", gap:6 }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>JSON
+            </button>
+          </div>
+        </div>
+        {load ? <Center><Spinner/></Center> : display.length > 0 ? (
           <table>
-            <thead><tr><th>Run</th><th>Total</th><th>HIGH</th><th>MED</th><th>LOW</th><th>Brute</th><th>Port Scan</th><th>Geo</th><th>Priv Esc</th><th>Generated</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Run</th><th>Total</th><th>HIGH</th><th>MED</th><th>LOW</th>
+                <th>Brute</th><th>Port Scan</th><th>Geo</th><th>Priv Esc</th>
+                <th>Alert Rate</th><th>Generated</th>
+              </tr>
+            </thead>
             <tbody>
-              {display.map((r,i)=>(
-                <tr key={i}>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:11 }}>#{r.pipeline_run_id}</td>
-                  <td style={{ fontFamily:"var(--mono)" }}>{r.total_records?.toLocaleString()}</td>
-                  <td style={{ fontFamily:"var(--mono)",color:"var(--rose)" }}>{r.high_count}</td>
-                  <td style={{ fontFamily:"var(--mono)",color:"var(--amber)" }}>{r.medium_count}</td>
-                  <td style={{ fontFamily:"var(--mono)",color:"var(--emerald)" }}>{r.low_count}</td>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:12 }}>{r.brute_force_count}</td>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:12 }}>{r.port_scan_count}</td>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:12 }}>{r.geo_anomaly_count}</td>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:12 }}>{r.priv_esc_count}</td>
-                  <td style={{ fontSize:11,color:"var(--muted)" }}>{new Date(r.generated_at).toLocaleString()}</td>
-                </tr>
-              ))}
+              {display.map((r, i) => {
+                const ar = r.total_records
+                  ? ((r.high_count+r.medium_count)/r.total_records*100).toFixed(1) : 0;
+                return (
+                  <tr key={i}>
+                    <td style={{ fontFamily:"var(--mono)", fontSize:11 }}>#{r.pipeline_run_id}</td>
+                    <td style={{ fontFamily:"var(--mono)" }}>{r.total_records?.toLocaleString()}</td>
+                    <td style={{ fontFamily:"var(--mono)", color:"var(--rose)" }}>{r.high_count}</td>
+                    <td style={{ fontFamily:"var(--mono)", color:"var(--amber)" }}>{r.medium_count}</td>
+                    <td style={{ fontFamily:"var(--mono)", color:"var(--emerald)" }}>{r.low_count}</td>
+                    <td style={{ fontFamily:"var(--mono)", fontSize:12 }}>{r.brute_force_count}</td>
+                    <td style={{ fontFamily:"var(--mono)", fontSize:12 }}>{r.port_scan_count}</td>
+                    <td style={{ fontFamily:"var(--mono)", fontSize:12 }}>{r.geo_anomaly_count}</td>
+                    <td style={{ fontFamily:"var(--mono)", fontSize:12 }}>{r.priv_esc_count}</td>
+                    <td>
+                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                        <div style={{ width:40, height:4, background:"rgba(255,255,255,0.05)", borderRadius:2 }}>
+                          <div style={{
+                            height:"100%", borderRadius:2,
+                            width:`${Math.min(ar,100)}%`,
+                            background:ar>10?"var(--rose)":ar>5?"var(--amber)":"var(--cyan)"
+                          }}/>
+                        </div>
+                        <span style={{ fontSize:11, fontFamily:"var(--mono)", color:"var(--muted)" }}>{ar}%</span>
+                      </div>
+                    </td>
+                    <td style={{ fontSize:11, color:"var(--muted)" }}>
+                      {new Date(r.generated_at).toLocaleString()}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : <Empty msg="No report found for this run yet."/>}
