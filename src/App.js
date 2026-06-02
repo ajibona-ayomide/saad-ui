@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-const API = axios.create({ baseURL: "https://saad-backend-k5nb.onrender.com/api/v1", });
+const API = axios.create({ baseURL: "https://saad-backend-k5nb.onrender.com/api", });
 API.interceptors.request.use((cfg) => {
   const t = localStorage.getItem("saad_token");
   if (t) cfg.headers.Authorization = `Bearer ${t}`;
