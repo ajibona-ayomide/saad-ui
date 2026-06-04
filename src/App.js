@@ -1665,56 +1665,56 @@ function LogViewerPage() {
 
 // ─── PIPELINE ─────────────────────────────────────────────────────────────────
 function CollectionPage() {
-  const [running,  setRunning]  = useState(false);
-  const [runId,    setRunId]    = useState(null);
-  const [status,   setStatus]   = useState("");
-  const [message,  setMsg]      = useState("");
-  const [history,  setHistory]  = useState([]);
-  const [mode,     setMode]     = useState("default");
-  const [dragOver, setDragOver] = useState(false);
-  const [file,     setFile]     = useState(null);
-  const [csvText,  setCsvText]  = useState("");
-  const [uploadMsg,setUploadMsg]= useState("");
+  const [running,    setRunning]    = useState(false);
+  const [runId,      setRunId]      = useState(null);
+  const [status,     setStatus]     = useState("");
+  const [message,    setMsg]        = useState("");
+  const [history,    setHistory]    = useState([]);
+  const [dragOver,   setDragOver]   = useState(false);
+  const [file,       setFile]       = useState(null);
+  const [csvText,    setCsvText]    = useState("");
+  const [uploadMsg,  setUploadMsg]  = useState("");
+  const [showAgent,  setShowAgent]  = useState(false);
+  const [copied,     setCopied]     = useState(false);
   const fileRef = useRef(null);
 
-  useEffect(()=>{
-    API.get("/pipeline/history").then(r=>setHistory(r.data)).catch(console.error);
-  },[]);
+  // Get JWT token for pre-filling the command
+  const token = localStorage.getItem("saad_token") || "<your_jwt_token>";
+  const backendUrl = "https://saad-backend-k5nb.onrender.com";
+  const agentCmd = `python saad_agent.py --url ${backendUrl} --token ${token} --range 24h`;
 
-  useEffect(()=>{
-    if(!runId||!running) return;
-    const iv = setInterval(()=>{
-      API.get(`/pipeline/status/${runId}`).then(r=>{
+  useEffect(() => {
+    API.get("/pipeline/history").then(r => setHistory(r.data)).catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!runId || !running) return;
+    const iv = setInterval(() => {
+      API.get(`/pipeline/status/${runId}`).then(r => {
         setStatus(r.data.status);
-        if(r.data.status!=="running"){
+        if (r.data.status !== "running") {
           setRunning(false); clearInterval(iv);
-          setMsg(r.data.status==="completed"
+          setMsg(r.data.status === "completed"
             ? `✓ Complete — ${r.data.total_records?.toLocaleString()} records processed`
             : `✗ Failed: ${r.data.error_message}`);
-          API.get("/pipeline/history").then(r2=>setHistory(r2.data)).catch(console.error);
+          API.get("/pipeline/history").then(r2 => setHistory(r2.data)).catch(console.error);
         }
       }).catch(console.error);
-    },3000);
-    return ()=>clearInterval(iv);
-  },[runId,running]);
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [runId, running]);
 
-  const startPolling = (id) => { setRunId(id); setRunning(true); setStatus("running"); setMsg(""); setUploadMsg(""); };
+  const startPolling = (id) => {
+    setRunId(id); setRunning(true); setStatus("running"); setMsg(""); setUploadMsg("");
+  };
 
   const handleFile = (f) => {
     if (!f) return;
     if (!f.name.endsWith(".csv")) { setUploadMsg("Only CSV files are supported."); return; }
-    setFile(f); setCsvText(""); setUploadMsg(`📄 ${f.name} selected (${(f.size/1024).toFixed(1)} KB)`);
+    setFile(f); setCsvText(""); setUploadMsg(`📄 ${f.name} selected (${(f.size / 1024).toFixed(1)} KB)`);
   };
 
   const onDrop = (e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); };
-
-  const runDefault = async () => {
-    setMsg(""); setUploadMsg("");
-    try {
-      const r = await API.post("/pipeline/run");
-      startPolling(r.data.pipeline_run_id);
-    } catch(e) { setRunning(false); setMsg(e.response?.data?.error||"Failed to start"); }
-  };
 
   const runCustom = async () => {
     if (!file && !csvText.trim()) { setUploadMsg("Please upload a CSV file or paste CSV data first."); return; }
@@ -1726,132 +1726,369 @@ function CollectionPage() {
         const r = await API.post("/pipeline/run-upload", form, { headers: { "Content-Type": "multipart/form-data" } });
         startPolling(r.data.pipeline_run_id);
         setUploadMsg(`✓ Running pipeline on ${file.name}`);
-      } catch(e) { setRunning(false); setUploadMsg(e.response?.data?.error||"Upload failed"); }
+      } catch (e) { setRunning(false); setUploadMsg(e.response?.data?.error || "Upload failed"); }
     } else {
       try {
         const r = await API.post("/pipeline/run-paste", { csv_content: csvText });
         startPolling(r.data.pipeline_run_id);
         setUploadMsg("✓ Pasted data submitted to pipeline");
-      } catch(e) { setRunning(false); setUploadMsg(e.response?.data?.error||"Failed"); }
+      } catch (e) { setRunning(false); setUploadMsg(e.response?.data?.error || "Failed"); }
     }
+  };
+
+  const downloadAgent = () => {
+    const agentUrl = "https://raw.githubusercontent.com/ajibona-ayomide/SAAD/main/saad_agent.py";
+    const a = document.createElement("a");
+    a.href = agentUrl;
+    a.download = "saad_agent.py";
+    a.click();
+  };
+
+  const copyCmd = () => {
+    navigator.clipboard.writeText(agentCmd).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   const rowCount = csvText.trim() ? csvText.trim().split("\n").length - 1 : 0;
 
   return (
-    <div className="scroll" style={{ padding:"28px 32px" }}>
-      <div style={{ marginBottom:28 }}>
-        <div className="label fade-up" style={{ marginBottom:6 }}>Execution</div>
-        <h1 className="page-title fade-up s1">Pipeline Control</h1>
-        <div style={{ fontSize:13,color:"var(--muted)",marginTop:6 }}>Run SAAD on your own authentication logs or the configured dataset</div>
-      </div>
-      <div style={{ display:"flex",gap:8,marginBottom:20 }}>
-        {["default","custom"].map(m => (
-          <button key={m} onClick={()=>{ setMode(m); setFile(null); setCsvText(""); setUploadMsg(""); setMsg(""); }}
-                  style={{ padding:"8px 22px",borderRadius:100,fontSize:12,fontWeight:600,fontFamily:"var(--mono)",cursor:"pointer",transition:"all .2s",
-                           background:mode===m?"var(--cyan)":"rgba(255,255,255,0.05)",color:mode===m?"#03060f":"var(--muted)",border:mode===m?"none":"1px solid var(--border2)" }}>
-            {m === "default" ? "Default Dataset" : "Upload / Paste Logs"}
-          </button>
-        ))}
-      </div>
-      <div className="card fade-up s2" style={{ marginBottom:20 }}>
-        {mode === "default" && (
-          <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:16 }}>
-            <div>
-              <div style={{ fontSize:16,fontWeight:600,color:"var(--text)",marginBottom:6 }}>Run on Configured Dataset</div>
-              <div style={{ fontSize:13,color:"var(--muted)",lineHeight:1.6 }}>
-                Processes the CSV file configured in{" "}
-                <span style={{ fontFamily:"var(--mono)",color:"var(--cyan)",fontSize:12 }}>saad/config/log_sources.yaml</span>
+    <div className="scroll" style={{ padding: "28px 32px" }}>
+
+      {/* ── Agent Modal ── */}
+      {showAgent && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          background: "rgba(3,6,15,0.85)", backdropFilter: "blur(12px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "24px"
+        }} onClick={e => { if (e.target === e.currentTarget) setShowAgent(false); }}>
+          <div className="fade-up" style={{
+            background: "var(--surface)", border: "1px solid rgba(0,229,255,0.25)",
+            borderRadius: 20, padding: 36, maxWidth: 640, width: "100%",
+            boxShadow: "0 0 80px rgba(0,229,255,0.1)"
+          }}>
+            {/* Modal header */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{
+                  width: 46, height: 46, borderRadius: 12, flexShrink: 0,
+                  background: "rgba(0,229,255,0.1)", border: "1px solid rgba(0,229,255,0.3)",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22
+                }}>⚡</div>
+                <div>
+                  <div style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, color: "var(--text)" }}>
+                    SAAD Local Agent
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
+                    Collect logs from this machine and send them to SAAD
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setShowAgent(false)}
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border2)", borderRadius: 8, color: "var(--muted)", width: 32, height: 32, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                ✕
+              </button>
+            </div>
+
+            {/* Explanation */}
+            <div style={{
+              background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.12)",
+              borderRadius: 12, padding: "16px 18px", marginBottom: 24, fontSize: 13,
+              color: "var(--muted)", lineHeight: 1.7
+            }}>
+              The SAAD agent is a lightweight Python script that runs on <span style={{ color: "var(--text)" }}>your machine</span>.
+              It collects Windows Security Event Logs (or Linux auth logs), converts them to CSV,
+              and uploads them directly to the pipeline — no manual export needed.
+            </div>
+
+            {/* Steps */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
+
+              {/* Step 1 */}
+              <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                <div style={{
+                  width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                  background: "rgba(0,229,255,0.15)", border: "1px solid rgba(0,229,255,0.3)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontFamily: "var(--mono)", fontSize: 11, color: "var(--cyan)", fontWeight: 700
+                }}>1</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+                    Download the agent
+                  </div>
+                  <button onClick={downloadAgent} className="btn-primary"
+                    style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "10px 20px" }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#03060f" strokeWidth="2.5">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download saad_agent.py
+                  </button>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                <div style={{
+                  width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                  background: "rgba(0,229,255,0.15)", border: "1px solid rgba(0,229,255,0.3)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontFamily: "var(--mono)", fontSize: 11, color: "var(--cyan)", fontWeight: 700
+                }}>2</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+                    Install dependencies <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 12 }}>(once only)</span>
+                  </div>
+                  <div style={{
+                    background: "rgba(0,0,0,0.4)", border: "1px solid var(--border)",
+                    borderRadius: 8, padding: "10px 14px", fontFamily: "var(--mono)", fontSize: 12
+                  }}>
+                    <span style={{ color: "var(--cyan)" }}>$</span>
+                    <span style={{ color: "var(--emerald)", marginLeft: 8 }}>
+                      pip install requests pywin32
+                    </span>
+                    <span style={{ color: "var(--muted)", marginLeft: 16, fontSize: 11 }}># Windows</span>
+                    <br />
+                    <span style={{ color: "var(--cyan)" }}>$</span>
+                    <span style={{ color: "var(--emerald)", marginLeft: 8 }}>
+                      pip install requests
+                    </span>
+                    <span style={{ color: "var(--muted)", marginLeft: 16, fontSize: 11 }}># Linux</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                <div style={{
+                  width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                  background: "rgba(0,229,255,0.15)", border: "1px solid rgba(0,229,255,0.3)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontFamily: "var(--mono)", fontSize: 11, color: "var(--cyan)", fontWeight: 700
+                }}>3</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+                    Run the agent — your token is pre-filled
+                  </div>
+                  <div style={{
+                    background: "rgba(0,0,0,0.4)", border: "1px solid rgba(0,229,255,0.2)",
+                    borderRadius: 8, padding: "12px 14px", fontFamily: "var(--mono)", fontSize: 11,
+                    color: "var(--emerald)", wordBreak: "break-all", lineHeight: 1.6,
+                    position: "relative"
+                  }}>
+                    <span style={{ color: "var(--cyan)" }}>$</span>
+                    <span style={{ marginLeft: 8 }}>{agentCmd}</span>
+                  </div>
+                  <button onClick={copyCmd} className="btn-ghost"
+                    style={{ marginTop: 8, fontSize: 12, padding: "7px 16px", display: "flex", alignItems: "center", gap: 7 }}>
+                    {copied ? (
+                      <><span style={{ color: "var(--emerald)" }}>✓</span> Copied!</>
+                    ) : (
+                      <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                      </svg> Copy command</>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
-            <button className="btn-primary" onClick={runDefault} disabled={running} style={{ display:"flex",alignItems:"center",gap:10,minWidth:170,justifyContent:"center" }}>
-              {running ? <><Spinner size={16}/>Running...</> : <><Ic n="zap" s={15} c="#03060f"/>Run Pipeline</>}
+
+            {/* Windows note */}
+            <div style={{
+              background: "rgba(255,182,39,0.06)", border: "1px solid rgba(255,182,39,0.2)",
+              borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "var(--amber)",
+              display: "flex", gap: 10, alignItems: "flex-start"
+            }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>⚠</span>
+              <span>On Windows, run the terminal <strong>as Administrator</strong> so the agent can read the Security Event Log.</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Page header ── */}
+      <div style={{ marginBottom: 28 }}>
+        <div className="label fade-up" style={{ marginBottom: 6 }}>Execution</div>
+        <h1 className="page-title fade-up s1">Pipeline Control</h1>
+        <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>
+          Run SAAD on your authentication logs
+        </div>
+      </div>
+
+      {/* ── Two mode cards ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+
+        {/* Card 1 — Local Agent */}
+        <div className="card fade-up s1" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+              background: "rgba(0,229,255,0.1)", border: "1px solid rgba(0,229,255,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18
+            }}>⚡</div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Collect from This Machine</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Windows Event Log or Linux auth.log</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
+            Download the SAAD local agent, run it on your machine, and it will automatically collect
+            authentication logs and upload them to the pipeline.
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: "auto" }}>
+            {["Windows Event Log", "Linux auth.log", "Auto-upload"].map((tag, i) => (
+              <span key={i} className="stat-pill pill-info" style={{ fontSize: 10 }}>{tag}</span>
+            ))}
+          </div>
+          <button className="btn-primary" onClick={() => setShowAgent(true)}
+            style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
+            <Ic n="zap" s={15} c="#03060f" /> Run Pipeline
+          </button>
+        </div>
+
+        {/* Card 2 — Upload / Paste */}
+        <div className="card fade-up s2" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+              background: "rgba(124,92,255,0.1)", border: "1px solid rgba(124,92,255,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18
+            }}>📂</div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Upload or Paste CSV</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Manually provide a log file</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
+            Upload a CSV authentication log file or paste raw CSV data directly.
+            Required columns:{" "}
+            <span style={{ fontFamily: "var(--mono)", color: "var(--cyan)", fontSize: 11 }}>
+              timestamp, source_ip, hostname, username, auth_method, attempts, auth_result, port, protocol, message
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: "auto" }}>
+            {["CSV Upload", "Paste Data", "Drag & Drop"].map((tag, i) => (
+              <span key={i} className="stat-pill pill-open" style={{ fontSize: 10 }}>{tag}</span>
+            ))}
+          </div>
+          <button style={{
+            background: "rgba(124,92,255,0.15)", color: "var(--violet)",
+            border: "1px solid rgba(124,92,255,0.3)", borderRadius: 10,
+            padding: "11px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 10, justifyContent: "center",
+            transition: "all .2s"
+          }} onClick={() => document.getElementById("upload-section").scrollIntoView({ behavior: "smooth" })}>
+            <Ic n="logs" s={15} c="var(--violet)" /> Upload / Paste Logs
+          </button>
+        </div>
+      </div>
+
+      {/* ── Upload / Paste section ── */}
+      <div id="upload-section" className="card fade-up s3" style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 16 }}>
+          Upload or Paste Authentication Logs
+        </div>
+        <input type="file" accept=".csv" ref={fileRef} style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+        <div onClick={() => fileRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          style={{
+            border: `2px dashed ${dragOver ? "var(--cyan)" : "rgba(0,229,255,0.25)"}`,
+            borderRadius: 12, padding: "28px 20px", textAlign: "center", cursor: "pointer",
+            background: dragOver ? "rgba(0,229,255,0.06)" : "rgba(0,229,255,0.02)",
+            transition: "all .2s", marginBottom: 16
+          }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: file ? "var(--cyan)" : "var(--text)", marginBottom: 4 }}>
+            {file ? file.name : "Drag & drop a CSV file here"}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+            {file ? `${(file.size / 1024).toFixed(1)} KB — click to choose a different file` : "or click to browse · only .csv files accepted"}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+          <span style={{ fontSize: 11, color: "var(--subtle)", fontFamily: "var(--mono)" }}>OR PASTE CSV DATA BELOW</span>
+          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        </div>
+        <textarea value={csvText}
+          onChange={e => { setCsvText(e.target.value); if (e.target.value.trim()) setFile(null); }}
+          placeholder={`timestamp,source_ip,hostname,username,auth_method,attempts,auth_result,port,protocol,message\n2024-01-15T08:23:11,192.168.1.42,host-01,alice,ssh,1,success,22,TCP,User alice logged in via ssh`}
+          style={{
+            width: "100%", minHeight: 160, padding: "12px 16px",
+            background: "rgba(0,0,0,0.25)", border: "1px solid var(--border2)",
+            borderRadius: 10, color: "var(--text)", fontFamily: "var(--mono)",
+            fontSize: 12, resize: "vertical", outline: "none", lineHeight: 1.7, transition: "border-color .2s"
+          }}
+          onFocus={e => e.target.style.borderColor = "var(--cyan)"}
+          onBlur={e => e.target.style.borderColor = "var(--border2)"} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, flexWrap: "wrap", gap: 10 }}>
+          <div style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--muted)" }}>
+            {file ? `File selected: ${file.name}` : rowCount > 0 ? `${rowCount} data rows detected` : "No data yet"}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn-ghost" onClick={() => { setFile(null); setCsvText(""); setUploadMsg(""); }} style={{ fontSize: 12, padding: "8px 16px" }}>Clear</button>
+            <button className="btn-primary" onClick={runCustom}
+              disabled={running || (!file && !csvText.trim())}
+              style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center", minWidth: 160 }}>
+              {running ? <><Spinner size={16} />Running...</> : <><Ic n="zap" s={15} c="#03060f" />Run Pipeline</>}
             </button>
           </div>
-        )}
-        {mode === "custom" && (
-          <div>
-            <div style={{ fontSize:16,fontWeight:600,color:"var(--text)",marginBottom:6 }}>Scan Your Own Logs</div>
-            <div style={{ fontSize:13,color:"var(--muted)",marginBottom:16,lineHeight:1.6 }}>
-              Upload or paste a CSV authentication log file. Required columns:{" "}
-              <span style={{ fontFamily:"var(--mono)",color:"var(--cyan)",fontSize:11 }}>timestamp, source_ip, hostname, username, auth_method, attempts, auth_result, port, protocol, message</span>
-            </div>
-            <input type="file" accept=".csv" ref={fileRef} style={{ display:"none" }} onChange={e => handleFile(e.target.files[0])}/>
-            <div onClick={()=>fileRef.current?.click()} onDragOver={e=>{ e.preventDefault(); setDragOver(true); }} onDragLeave={()=>setDragOver(false)} onDrop={onDrop}
-                 style={{ border:`2px dashed ${dragOver?"var(--cyan)":"rgba(0,229,255,0.25)"}`,borderRadius:12,padding:"28px 20px",textAlign:"center",cursor:"pointer",
-                          background:dragOver?"rgba(0,229,255,0.06)":"rgba(0,229,255,0.02)",transition:"all .2s",marginBottom:16 }}>
-              <div style={{ fontSize:32,marginBottom:8 }}>📂</div>
-              <div style={{ fontSize:14,fontWeight:600,color:file?"var(--cyan)":"var(--text)",marginBottom:4 }}>{file ? file.name : "Drag & drop a CSV file here"}</div>
-              <div style={{ fontSize:12,color:"var(--muted)" }}>{file ? `${(file.size/1024).toFixed(1)} KB — click to choose a different file` : "or click to browse · only .csv files accepted"}</div>
-            </div>
-            <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:16 }}>
-              <div style={{ flex:1,height:1,background:"var(--border)" }}/>
-              <span style={{ fontSize:11,color:"var(--subtle)",fontFamily:"var(--mono)" }}>OR PASTE CSV DATA BELOW</span>
-              <div style={{ flex:1,height:1,background:"var(--border)" }}/>
-            </div>
-            <textarea value={csvText} onChange={e=>{ setCsvText(e.target.value); if(e.target.value.trim()) setFile(null); }}
-                      placeholder={`timestamp,source_ip,hostname,username,auth_method,attempts,auth_result,port,protocol,message\n2024-01-15T08:23:11,192.168.1.42,host-01,alice,ssh,1,success,22,TCP,User alice logged in via ssh`}
-                      style={{ width:"100%",minHeight:160,padding:"12px 16px",background:"rgba(0,0,0,0.25)",border:"1px solid var(--border2)",borderRadius:10,color:"var(--text)",fontFamily:"var(--mono)",fontSize:12,resize:"vertical",outline:"none",lineHeight:1.7,transition:"border-color .2s" }}
-                      onFocus={e=>e.target.style.borderColor="var(--cyan)"} onBlur={e=>e.target.style.borderColor="var(--border2)"}/>
-            <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:10,flexWrap:"wrap",gap:10 }}>
-              <div style={{ fontSize:12,fontFamily:"var(--mono)",color:"var(--muted)" }}>
-                {file ? `File selected: ${file.name}` : rowCount > 0 ? `${rowCount} data rows detected` : "No data yet"}
-              </div>
-              <div style={{ display:"flex",gap:10 }}>
-                <button className="btn-ghost" onClick={()=>{ setFile(null); setCsvText(""); setUploadMsg(""); }} style={{ fontSize:12,padding:"8px 16px" }}>Clear</button>
-                <button className="btn-primary" onClick={runCustom} disabled={running || (!file && !csvText.trim())} style={{ display:"flex",alignItems:"center",gap:10,justifyContent:"center",minWidth:160 }}>
-                  {running ? <><Spinner size={16}/>Running...</> : <><Ic n="zap" s={15} c="#03060f"/>Run Pipeline</>}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        </div>
+
         {running && (
-          <div style={{ marginTop:20 }}>
-            <div style={{ height:3,background:"rgba(255,255,255,0.06)",borderRadius:2,overflow:"hidden" }}>
-              <div style={{ height:"100%",borderRadius:2,width:"100%",background:"linear-gradient(90deg,var(--cyan),var(--violet),var(--cyan))",backgroundSize:"200% 100%",animation:"shimmer 1.5s linear infinite" }}/>
+          <div style={{ marginTop: 20 }}>
+            <div style={{ height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 2, width: "100%", background: "linear-gradient(90deg,var(--cyan),var(--violet),var(--cyan))", backgroundSize: "200% 100%", animation: "shimmer 1.5s linear infinite" }} />
             </div>
-            <div style={{ marginTop:8,fontSize:12,fontFamily:"var(--mono)",color:"var(--cyan)" }}>▶ Pipeline running... status: {status}</div>
+            <div style={{ marginTop: 8, fontSize: 12, fontFamily: "var(--mono)", color: "var(--cyan)" }}>▶ Pipeline running... status: {status}</div>
           </div>
         )}
         {uploadMsg && (
-          <div style={{ marginTop:14,padding:"10px 14px",borderRadius:8,fontSize:13,fontFamily:"var(--mono)",
-                        background:uploadMsg.startsWith("✓")?"rgba(0,214,143,0.08)":uploadMsg.startsWith("📄")?"rgba(0,229,255,0.06)":"rgba(255,77,109,0.08)",
-                        color:uploadMsg.startsWith("✓")?"var(--emerald)":uploadMsg.startsWith("📄")?"var(--cyan)":"var(--rose)",
-                        border:`1px solid ${uploadMsg.startsWith("✓")?"rgba(0,214,143,0.2)":uploadMsg.startsWith("📄")?"rgba(0,229,255,0.2)":"rgba(255,77,109,0.2)"}` }}>
-            {uploadMsg}
-          </div>
+          <div style={{
+            marginTop: 14, padding: "10px 14px", borderRadius: 8, fontSize: 13, fontFamily: "var(--mono)",
+            background: uploadMsg.startsWith("✓") ? "rgba(0,214,143,0.08)" : uploadMsg.startsWith("📄") ? "rgba(0,229,255,0.06)" : "rgba(255,77,109,0.08)",
+            color: uploadMsg.startsWith("✓") ? "var(--emerald)" : uploadMsg.startsWith("📄") ? "var(--cyan)" : "var(--rose)",
+            border: `1px solid ${uploadMsg.startsWith("✓") ? "rgba(0,214,143,0.2)" : uploadMsg.startsWith("📄") ? "rgba(0,229,255,0.2)" : "rgba(255,77,109,0.2)"}`
+          }}>{uploadMsg}</div>
         )}
         {message && (
-          <div style={{ marginTop:14,padding:"12px 16px",borderRadius:10,fontSize:13,fontFamily:"var(--mono)",
-                        background:message.startsWith("✓")?"rgba(0,214,143,0.08)":"rgba(255,77,109,0.08)",
-                        color:message.startsWith("✓")?"var(--emerald)":"var(--rose)",
-                        border:`1px solid ${message.startsWith("✓")?"rgba(0,214,143,0.2)":"rgba(255,77,109,0.2)"}` }}>
-            {message}
-          </div>
+          <div style={{
+            marginTop: 14, padding: "12px 16px", borderRadius: 10, fontSize: 13, fontFamily: "var(--mono)",
+            background: message.startsWith("✓") ? "rgba(0,214,143,0.08)" : "rgba(255,77,109,0.08)",
+            color: message.startsWith("✓") ? "var(--emerald)" : "var(--rose)",
+            border: `1px solid ${message.startsWith("✓") ? "rgba(0,214,143,0.2)" : "rgba(255,77,109,0.2)"}`
+          }}>{message}</div>
         )}
       </div>
-      <div className="card fade-up s3">
-        <div className="label" style={{ marginBottom:16 }}>Pipeline history</div>
-        {history.length>0 ? (
+
+      {/* ── History ── */}
+      <div className="card fade-up s4">
+        <div className="label" style={{ marginBottom: 16 }}>Pipeline history</div>
+        {history.length > 0 ? (
           <table>
             <thead><tr><th>#</th><th>Status</th><th>Total</th><th>HIGH</th><th>MED</th><th>LOW</th><th>Started</th><th>By</th></tr></thead>
             <tbody>
-              {history.map((r,i)=>(
+              {history.map((r, i) => (
                 <tr key={i}>
-                  <td style={{ fontFamily:"var(--mono)",fontSize:11,color:"var(--subtle)" }}>#{r.id}</td>
-                  <td><span className={`stat-pill ${r.status==="completed"?"pill-low":r.status==="running"?"pill-info":"pill-high"}`}>{r.status}</span></td>
-                  <td style={{ fontFamily:"var(--mono)" }}>{r.total_records?.toLocaleString()||"—"}</td>
-                  <td style={{ fontFamily:"var(--mono)",color:"var(--rose)" }}>{r.high_count||0}</td>
-                  <td style={{ fontFamily:"var(--mono)",color:"var(--amber)" }}>{r.medium_count||0}</td>
-                  <td style={{ fontFamily:"var(--mono)",color:"var(--emerald)" }}>{r.low_count||0}</td>
-                  <td style={{ fontSize:11,fontFamily:"var(--mono)",color:"var(--muted)" }}>{new Date(r.started_at).toLocaleString()}</td>
-                  <td style={{ fontSize:12 }}>{r.triggered_by_name||"—"}</td>
+                  <td style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--subtle)" }}>#{r.id}</td>
+                  <td><span className={`stat-pill ${r.status === "completed" ? "pill-low" : r.status === "running" ? "pill-info" : "pill-high"}`}>{r.status}</span></td>
+                  <td style={{ fontFamily: "var(--mono)" }}>{r.total_records?.toLocaleString() || "—"}</td>
+                  <td style={{ fontFamily: "var(--mono)", color: "var(--rose)" }}>{r.high_count || 0}</td>
+                  <td style={{ fontFamily: "var(--mono)", color: "var(--amber)" }}>{r.medium_count || 0}</td>
+                  <td style={{ fontFamily: "var(--mono)", color: "var(--emerald)" }}>{r.low_count || 0}</td>
+                  <td style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--muted)" }}>{new Date(r.started_at).toLocaleString()}</td>
+                  <td style={{ fontSize: 12 }}>{r.triggered_by_name || "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        ) : <Empty msg="No pipeline runs yet."/>}
+        ) : <Empty msg="No pipeline runs yet." />}
       </div>
     </div>
   );
