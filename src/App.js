@@ -1724,7 +1724,7 @@ function CollectionPage() {
   // Get JWT token for pre-filling the command
   const token = localStorage.getItem("saad_token") || "<your_jwt_token>";
   const backendUrl = "https://saad-backend-k5nb.onrender.com";
-  const agentCmd = `python saad_agent.py --url ${backendUrl} --token ${token} --range 24h && exit`;
+  const agentCmd = `cd "%USERPROFILE%\\Downloads" && python saad_agent.py --url ${backendUrl} --token ${token} --range 24h`;
 
   useEffect(() => {
     API.get("/pipeline/history").then(r => setHistory(r.data)).catch(console.error);
