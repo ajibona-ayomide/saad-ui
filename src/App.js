@@ -1738,16 +1738,16 @@ function CollectionPage() {
 
   const downloadAgent = async () => {
   try {
-    const resp = await fetch("https://raw.githubusercontent.com/ajibona-ayomide/SAAD/main/saad_agent.py");
+    const resp = await fetch("https://saad-backend-k5nb.onrender.com/api/download/agent");
     const blob = await resp.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "saad_agent.py";
+    a.download = "SAAD_Agent.exe";
     a.click();
     URL.revokeObjectURL(url);
   } catch (e) {
-    alert("Failed to download agent. Please visit: https://raw.githubusercontent.com/ajibona-ayomide/SAAD/main/saad_agent.py");
+    alert("Failed to download agent. Please try again.");
   }
 };
 
