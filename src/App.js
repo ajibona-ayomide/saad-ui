@@ -1674,14 +1674,16 @@ function CollectionPage() {
   const [file,       setFile]       = useState(null);
   const [csvText,    setCsvText]    = useState("");
   const [uploadMsg,  setUploadMsg]  = useState("");
-  const [showAgent,  setShowAgent]  = useState(false);
+  const [showAgent,    setShowAgent]    = useState(false);
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentResult,  setAgentResult]  = useState(null);
   const [copied,     setCopied]     = useState(false);
   const fileRef = useRef(null);
 
   // Get JWT token for pre-filling the command
   const token = localStorage.getItem("saad_token") || "<your_jwt_token>";
   const backendUrl = "https://saad-backend-k5nb.onrender.com";
-  const agentCmd = `python saad_agent.py --url ${backendUrl} --token ${token} --range 24h`;
+  const agentCmd = `python saad_agent.py --url ${backendUrl} --token ${token} --range 24h && exit`;
 
   useEffect(() => {
     API.get("/pipeline/history").then(r => setHistory(r.data)).catch(console.error);
@@ -1703,6 +1705,49 @@ function CollectionPage() {
     }, 3000);
     return () => clearInterval(iv);
   }, [runId, running]);
+  
+  // Poll for new pipeline run when agent modal is open
+useEffect(() => {
+  if (!showAgent) return;
+  setAgentRunning(false);
+  setAgentResult(null);
+
+  // Record current latest run ID before agent runs
+  let lastRunId = history.length > 0 ? history[0].id : 0;
+
+  const iv = setInterval(async () => {
+    try {
+      const r = await API.get("/pipeline/history");
+      const runs = r.data;
+      if (runs.length > 0 && runs[0].id > lastRunId) {
+        const latest = runs[0];
+        lastRunId = latest.id;
+        if (latest.status === "running") {
+          setAgentRunning(true);
+          setAgentResult(null);
+        } else if (latest.status === "completed") {
+          setAgentRunning(false);
+          setAgentResult({
+            success: true,
+            total: latest.total_records,
+            high: latest.high_count,
+            medium: latest.medium_count,
+            low: latest.low_count,
+            rule: latest.rule_match_count,
+          });
+          setHistory(runs);
+          clearInterval(iv);
+        } else if (latest.status === "failed") {
+          setAgentRunning(false);
+          setAgentResult({ success: false, error: latest.error_message });
+          clearInterval(iv);
+        }
+      }
+    } catch (e) { console.error(e); }
+  }, 4000);
+
+  return () => clearInterval(iv);
+}, [showAgent]);
 
   const startPolling = (id) => {
     setRunId(id); setRunning(true); setStatus("running"); setMsg(""); setUploadMsg("");
@@ -1903,6 +1948,51 @@ function CollectionPage() {
                 </div>
               </div>
             </div>
+            
+            {/* Live status */}
+            {agentRunning && (
+              <div style={{
+                background: "rgba(0,229,255,0.06)", border: "1px solid rgba(0,229,255,0.2)",
+                borderRadius: 10, padding: "14px 16px", marginBottom: 16,
+                display: "flex", alignItems: "center", gap: 12
+            }}>
+              <Spinner size={18}/>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cyan)" }}>Pipeline running...</div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Logs uploaded — processing now</div>
+              </div>
+            </div>
+          )}
+          {agentResult && agentResult.success && (
+            <div style={{
+              background: "rgba(0,214,143,0.08)", border: "1px solid rgba(0,214,143,0.2)",
+              borderRadius: 10, padding: "16px", marginBottom: 16
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--emerald)", marginBottom: 10 }}>✓ Pipeline completed!</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[
+                  ["Total logs",   agentResult.total,  "var(--cyan)"   ],
+                  ["High risk",    agentResult.high,   "var(--rose)"   ],
+                  ["Medium risk",  agentResult.medium, "var(--amber)"  ],
+                  ["Rule alerts",  agentResult.rule,   "var(--violet)" ],
+                ].map(([label, val, color]) => (
+                  <div key={label} style={{ background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--muted)", marginBottom: 4 }}>{label.toUpperCase()}</div>
+                    <div style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {agentResult && !agentResult.success && (
+            <div style={{
+              background: "rgba(255,77,109,0.08)", border: "1px solid rgba(255,77,109,0.2)",
+              borderRadius: 10, padding: "14px 16px", marginBottom: 16,
+              fontSize: 13, color: "var(--rose)"
+            }}>
+              ✗ Pipeline failed: {agentResult.error || "Unknown error"}
+            </div>
+          )}
 
             {/* Windows note */}
             <div style={{
@@ -1951,7 +2041,7 @@ function CollectionPage() {
               <span key={i} className="stat-pill pill-info" style={{ fontSize: 10 }}>{tag}</span>
             ))}
           </div>
-          <button className="btn-primary" onClick={() => setShowAgent(true)}
+          <button className="btn-primary" onClick={() => { setShowAgent(true); setAgentResult(null); }}
             style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
             <Ic n="zap" s={15} c="#03060f" /> Run Pipeline
           </button>
