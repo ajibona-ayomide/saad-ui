@@ -1070,6 +1070,10 @@ function LoginPage({ onLogin }) {
   const [regErr,    setRegErr]   = useState("");
   const [regMsg,    setRegMsg]   = useState("");
   const [regLoad,   setRegLoad]  = useState(false);
+  const [otp,      setOtp]      = useState("");
+  const [otpErr,   setOtpErr]   = useState("");
+  const [otpMsg,   setOtpMsg]   = useState("");
+  const [otpLoad,  setOtpLoad]  = useState(false);
 
   const doLogin = async () => {
     setLoginLoad(true); setLoginErr("");
@@ -1090,11 +1094,21 @@ function LoginPage({ onLogin }) {
     setRegLoad(true);
     try {
       await API.post("/auth/register-public", { full_name: regName, email: regEmail, password: regPass });
-      setRegMsg("Account created! You can now sign in.");
-      setRegName(""); setRegEmail(""); setRegPass(""); setRegPass2("");
-      setTimeout(() => setTab("login"), 2000);
+      setTab("verify");
     } catch(e) { setRegErr(e.response?.data?.error || "Registration failed"); }
     finally { setRegLoad(false); }
+  };
+
+  const doVerify = async () => {
+    setOtpErr(""); setOtpMsg("");
+    if (!otp || otp.length !== 6) { setOtpErr("Please enter the 6-digit code"); return; }
+    setOtpLoad(true);
+    try {
+      await API.post("/auth/verify-otp", { email: regEmail, otp_code: otp });
+      setOtpMsg("✓ Email verified! Your account is pending admin approval.");
+      setTimeout(() => { setTab("login"); setOtp(""); }, 3000);
+    } catch(e) { setOtpErr(e.response?.data?.error || "Invalid code"); }
+    finally { setOtpLoad(false); }
   };
 
   return (
@@ -1114,8 +1128,8 @@ function LoginPage({ onLogin }) {
           </div>
         </div>
         <div style={{ display:"flex",background:"rgba(255,255,255,0.04)",borderRadius:12,padding:4,marginBottom:24,border:"1px solid var(--border2)" }}>
-          {["login","register"].map(t => (
-            <button key={t} onClick={() => setTab(t)}
+          {["login","register"].filter(t => tab !== "verify" || t === "register").map(t => (
+          <button key={t} onClick={() => tab !== "verify" && setTab(t)}
                     style={{ flex:1,padding:"10px",borderRadius:9,fontSize:13,fontWeight:600,fontFamily:"var(--body)",cursor:"pointer",transition:"all .2s",
                               background:tab===t?"var(--cyan)":"transparent",color:tab===t?"#03060f":"var(--muted)",border:"none" }}>
               {t === "login" ? "Sign In" : "Create Account"}
@@ -1166,6 +1180,33 @@ function LoginPage({ onLogin }) {
             <div style={{ marginTop:16,fontSize:12,color:"var(--muted)",textAlign:"center",lineHeight:1.6 }}>
               New accounts are assigned <span style={{ color:"var(--cyan)" }}>Viewer</span> role by default. An administrator can upgrade your role after sign-up.
             </div>
+          </div>
+        )}
+        {tab === "verify" && (
+          <div className="glass fade-in" style={{ padding:36 }}>
+            <div style={{ textAlign:"center", marginBottom:24 }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📧</div>
+              <div style={{ fontFamily:"var(--display)", fontSize:18, fontWeight:700, color:"var(--text)" }}>Check your email</div>
+              <div style={{ fontSize:13, color:"var(--muted)", marginTop:8, lineHeight:1.6 }}>
+                We sent a 6-digit verification code to<br/>
+                <span style={{ color:"var(--cyan)", fontFamily:"var(--mono)" }}>{regEmail}</span>
+              </div>
+            </div>
+            <div style={{ marginBottom:24 }}>
+              <div className="label" style={{ marginBottom:8 }}>Verification code</div>
+              <input value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g,"").slice(0,6))}
+                     placeholder="000000" maxLength={6}
+                     style={{ textAlign:"center", fontSize:28, letterSpacing:12, fontFamily:"var(--mono)" }}
+                     onKeyDown={e => e.key === "Enter" && doVerify()}/>
+            </div>
+            {otpErr && <div style={{ marginBottom:16, padding:"10px 14px", borderRadius:8, fontSize:13, background:"rgba(255,77,109,0.1)", color:"var(--rose)", border:"1px solid rgba(255,77,109,0.2)" }}>{otpErr}</div>}
+            {otpMsg && <div style={{ marginBottom:16, padding:"10px 14px", borderRadius:8, fontSize:13, background:"rgba(0,214,143,0.1)", color:"var(--emerald)", border:"1px solid rgba(0,214,143,0.2)" }}>{otpMsg}</div>}
+            <button className="btn-primary" style={{ width:"100%", padding:"14px", fontSize:15 }} onClick={doVerify} disabled={otpLoad}>
+              {otpLoad ? <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}><Spinner size={18}/>Verifying...</span> : "Verify Email"}
+            </button>
+            <button onClick={() => setTab("register")} style={{ width:"100%", marginTop:12, background:"transparent", border:"none", color:"var(--muted)", fontSize:13, cursor:"pointer" }}>
+              ← Back to registration
+            </button>
           </div>
         )}
         <div style={{ textAlign:"center",marginTop:24,fontSize:11,color:"var(--subtle)",fontFamily:"var(--mono)",letterSpacing:1 }}>
